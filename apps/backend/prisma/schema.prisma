@@ -1,0 +1,342 @@
+// OGFN backend schema.
+//
+// ADR: Currency lives in a single `Wallet` row per user that is row-locked (SELECT ... FOR UPDATE)
+// inside SERIALIZABLE transactions, with every change mirrored into an append-only `LedgerEntry`.
+// Ownership is enforced by a unique (userId, cosmeticId) index, and purchases carry a unique
+// (userId, idempotencyKey) index — so even a buggy client cannot double-charge or double-grant.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PLAYER
+  ADMIN
+}
+
+enum CosmeticType {
+  outfit
+  backpack
+  pickaxe
+  glider
+  emote
+  wrap
+  contrail
+}
+
+enum Rarity {
+  common
+  uncommon
+  rare
+  epic
+  legendary
+  dark
+  frozen
+  lava
+  shadow
+  marvel
+}
+
+enum ItemSource {
+  PURCHASE
+  GRANT
+  DEFAULT
+  GIFT
+}
+
+enum ShopSection {
+  featured
+  daily
+}
+
+enum NewsCategory {
+  PATCH_NOTES
+  EVENT
+  SHOP
+  MAINTENANCE
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+enum MatchStatus {
+  PENDING
+  LIVE
+  ENDED
+  ABANDONED
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String
+  displayName          String    @unique
+  displayNameChangedAt DateTime?
+  avatarId             String    @default("default")
+  bannerId             String    @default("default")
+  roles                Role[]    @default([PLAYER])
+  totpSecret           String?
+  totpPendingSecret    String?
+  totpEnabled          Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  wallet       Wallet?
+  sessions     Session[]
+  inventory    InventoryItem[]
+  loadout      LoadoutState?
+  purchases    Purchase[]       @relation("purchaser")
+  gifts        Purchase[]       @relation("recipient")
+  ledger       LedgerEntry[]
+  matches      PlayerMatch[]
+  friendsOut   Friendship[]     @relation("requester")
+  friendsIn    Friendship[]     @relation("addressee")
+  hostedServer GameServer[]
+}
+
+model Session {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceName String?
+  ip         String?
+  createdAt  DateTime       @default(now())
+  lastUsedAt DateTime       @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  tokens     RefreshToken[]
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  sessionId String
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// sha256 of the opaque token; the raw token is never stored.
+  hash      String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([sessionId])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Int
+  updatedAt DateTime @updatedAt
+}
+
+model LedgerEntry {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta        Int
+  balanceAfter Int
+  reason       String
+  refId        String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Cosmetic {
+  id           String       @id
+  name         String
+  description  String
+  type         CosmeticType
+  rarity       Rarity
+  setName      String?
+  imageUrl     String
+  season       Int
+  gameAssetId  String?
+  basePrice    Int
+  shopEligible Boolean      @default(true)
+  isDefault    Boolean      @default(false)
+
+  owners     InventoryItem[]
+  offerItems ShopOfferItem[]
+}
+
+model InventoryItem {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cosmeticId String
+  cosmetic   Cosmetic   @relation(fields: [cosmeticId], references: [id])
+  acquiredAt DateTime   @default(now())
+  favorite   Boolean    @default(false)
+  source     ItemSource
+
+  @@unique([userId, cosmeticId])
+}
+
+model LoadoutState {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activePreset Int      @default(0)
+  /// Array of 10 { name, slots } presets, validated by the LoadoutState zod schema.
+  presets      Json
+  updatedAt    DateTime @updatedAt
+}
+
+model ShopRotation {
+  id        String      @id @default(cuid())
+  date      String      @unique
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime    @default(now())
+  offers    ShopOffer[]
+}
+
+model ShopOffer {
+  id           String          @id @default(cuid())
+  rotationId   String
+  rotation     ShopRotation    @relation(fields: [rotationId], references: [id], onDelete: Cascade)
+  key          String          @unique
+  section      ShopSection
+  title        String
+  price        Int
+  regularPrice Int
+  isBundle     Boolean         @default(false)
+  sortOrder    Int
+  items        ShopOfferItem[]
+  purchases    Purchase[]
+}
+
+model ShopOfferItem {
+  offerId    String
+  offer      ShopOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  cosmeticId String
+  cosmetic   Cosmetic  @relation(fields: [cosmeticId], references: [id])
+
+  @@id([offerId, cosmeticId])
+}
+
+model Purchase {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation("purchaser", fields: [userId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      User      @relation("recipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  offerId        String
+  offer          ShopOffer @relation(fields: [offerId], references: [id])
+  price          Int
+  idempotencyKey String
+  grantedIds     String[]
+  balanceAfter   Int
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+model NewsArticle {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  title        String
+  category     NewsCategory
+  excerpt      String
+  body         String
+  heroUrl      String
+  thumbnailUrl String
+  author       String
+  tags         String[]
+  published    Boolean      @default(true)
+  publishedAt  DateTime     @default(now())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([publishedAt])
+}
+
+model GameServer {
+  id            String    @id @default(cuid())
+  name          String
+  region        String
+  mode          String    @default("solo")
+  maxPlayers    Int       @default(100)
+  botCount      Int       @default(60)
+  botDifficulty String    @default("regular")
+  buildVersion  String
+  map           String    @default("Athena_Terrain")
+  tickRate      Int       @default(30)
+  host          String
+  port          Int
+  private       Boolean   @default(false)
+  passwordHash  String?
+  persistent    Boolean   @default(false)
+  ownerId       String?
+  owner         User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  stoppedAt     DateTime?
+  matches       Match[]
+}
+
+model Match {
+  id         String        @id @default(cuid())
+  serverId   String
+  server     GameServer    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  mode       String
+  region     String
+  status     MatchStatus   @default(PENDING)
+  createdAt  DateTime      @default(now())
+  startedAt  DateTime?
+  endedAt    DateTime?
+  botCount   Int           @default(0)
+  humanCount Int           @default(0)
+  winnerTeam Int?
+  players    PlayerMatch[]
+
+  @@index([status])
+}
+
+model PlayerMatch {
+  id          String   @id @default(cuid())
+  matchId     String
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  placement   Int
+  kills       Int
+  damage      Int
+  survivedSec Int
+  createdAt   DateTime @default(now())
+
+  @@unique([matchId, userId])
+  @@index([userId])
+}
+
+model BotIdentity {
+  id         String  @id @default(cuid())
+  handle     String  @unique
+  outfitId   String
+  backpackId String?
+  pickaxeId  String
+  gliderId   String
+  contrailId String?
+  emoteId    String
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  requester   User             @relation("requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User             @relation("addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+
+  @@unique([requesterId, addresseeId])
+}

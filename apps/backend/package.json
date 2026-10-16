@@ -1,0 +1,50 @@
+{
+  "name": "@ogfn/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OGFN backend: REST API + Socket.IO gateway (Fastify, Prisma, Redis).",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run test/unit",
+    "test:integration": "vitest run test/integration --no-file-parallelism",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx --env-file-if-exists=../../.env prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force --skip-seed && npm run db:seed",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "10.1.0",
+    "@fastify/helmet": "12.0.1",
+    "@fastify/swagger": "9.9.2",
+    "@fastify/swagger-ui": "5.2.6",
+    "@node-rs/argon2": "2.0.2",
+    "@ogfn/game-data": "0.1.0",
+    "@ogfn/shared-types": "0.1.0",
+    "@prisma/client": "6.19.3",
+    "fastify": "5.12.7",
+    "fastify-plugin": "5.1.0",
+    "fastify-type-provider-zod": "4.0.2",
+    "ioredis": "5.11.1",
+    "jose": "5.10.0",
+    "otplib": "12.0.1",
+    "pino": "9.14.0",
+    "socket.io": "4.8.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "pino-pretty": "11.3.0",
+    "prisma": "6.19.3",
+    "socket.io-client": "4.8.3",
+    "tsup": "8.5.1",
+    "tsx": "4.21.0"
+  }
+}

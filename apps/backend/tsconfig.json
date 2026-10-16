@@ -1,0 +1,4 @@
+{
+  "extends": "../../packages/config/tsconfig.node.json",
+  "include": ["src", "test", "prisma/*.ts", "tsup.config.ts", "vitest.config.ts"]
+}

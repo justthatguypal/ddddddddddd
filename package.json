@@ -1,0 +1,48 @@
+{
+  "name": "ogfn",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OGFN Launcher + Backend + Bot System — a self-hostable 2017-style launcher and private backend for a Season 3 (v3.x) client.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @ogfn/launcher",
+    "dev:web": "npm run dev:web -w @ogfn/launcher",
+    "dev:backend": "npm run dev -w @ogfn/backend",
+    "dev:game-server": "npm run dev -w @ogfn/game-server",
+    "dev:all": "concurrently -n backend,orch,launcher -c blue,magenta,yellow \"npm:dev:backend\" \"npm:dev:game-server\" \"npm:dev\"",
+    "db:migrate": "npm run db:migrate -w @ogfn/backend",
+    "db:seed": "npm run db:seed -w @ogfn/backend",
+    "db:reset": "npm run db:reset -w @ogfn/backend",
+    "build": "npm run build --workspaces --if-present",
+    "build:launcher": "npm run build -w @ogfn/launcher",
+    "dist:win": "npm run dist:win -w @ogfn/launcher",
+    "dist:linux": "npm run dist:linux -w @ogfn/launcher",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "test:integration": "npm run test:integration -w @ogfn/backend",
+    "test:a11y": "npm run test:a11y -w @ogfn/launcher",
+    "bench:bots": "npm run bench:tiers -w @ogfn/game-server"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "20.19.43",
+    "concurrently": "9.2.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "globals": "15.15.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "2.1.9"
+  }
+}
